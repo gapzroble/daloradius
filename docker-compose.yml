@@ -1,4 +1,4 @@
-version: "3"
+#ersion: "3"
 
 services:
 
@@ -27,12 +27,15 @@ services:
       - '1813:1813/udp'
     environment:
       - MYSQL_HOST=radius-mysql
+      #- MYSQL_HOST=172.24.0.2
       - MYSQL_PORT=3306
       - MYSQL_DATABASE=radius
       - MYSQL_USER=radius
       - MYSQL_PASSWORD=radiusdbpw
+      - MYSQL_ROOT_PASSWORD=radiusrootdbpw
       # Optional settings
       - DEFAULT_CLIENT_SECRET=testing123
+      - ROUTER_NETWORK=192.168.10.0/24
     volumes:
       - ./data/freeradius:/data
       - radius_logs:/var/log/freeradius
@@ -47,14 +50,16 @@ services:
       - radius
       - radius-mysql
     ports:
-      - '80:80'
-      - '8000:8000'
+      - '85:80'
+      - '8005:8000'
     environment:
       - MYSQL_HOST=radius-mysql
+      #- MYSQL_HOST=172.24.0.2
       - MYSQL_PORT=3306
       - MYSQL_DATABASE=radius
       - MYSQL_USER=radius
       - MYSQL_PASSWORD=radiusdbpw
+      - MYSQL_ROOT_PASSWORD=radiusrootdbpw
       # Optional Settings:
       - DEFAULT_CLIENT_SECRET=testing123
       - DEFAULT_FREERADIUS_SERVER=radius
@@ -62,10 +67,10 @@ services:
       - MAIL_PORT=25
       - MAIL_FROM=root@daloradius.xdsl.by
       - MAIL_AUTH=
-
     volumes:
       - ./data/daloradius:/data
       - radius_logs:/var/log/freeradius
-
+      - /etc/freeradius:/etc/freeradius
+      
 volumes:
   radius_logs:

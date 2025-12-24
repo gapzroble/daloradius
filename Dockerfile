@@ -19,7 +19,7 @@ LABEL Description="daloRADIUS Official Docker based on Debian 11 and PHP7." \
 ENV DEBIAN_FRONTEND noninteractive
 
 # default timezone
-ENV TZ Europe/Vienna
+ENV TZ Asia/Manila
 
 # PHP install
 RUN apt-get update \

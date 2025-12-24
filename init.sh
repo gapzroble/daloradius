@@ -1,4 +1,5 @@
 #!/bin/bash
+# set -x
 # Executable process script for daloRADIUS docker image:
 # GitHub: git@github.com:lirantal/daloradius.git
 DALORADIUS_PATH=/var/www/daloradius
@@ -6,6 +7,7 @@ DALORADIUS_CONF_PATH=/var/www/daloradius/app/common/includes/daloradius.conf.php
 
 
 function init_daloradius {
+    echo "[init.sh] daloRADIUS initialization started."
 
     if ! test -f "$DALORADIUS_CONF_PATH" || ! test -s "$DALORADIUS_CONF_PATH"; then
         cp "$DALORADIUS_CONF_PATH.sample" "$DALORADIUS_CONF_PATH"
@@ -32,42 +34,44 @@ function init_daloradius {
     [ -n "$MAIL_AUTH" ] && sed -i "s/\$configValues\['CONFIG_MAIL_SMTPAUTH'\] = .*;/\$configValues\['CONFIG_MAIL_SMTPAUTH'\] = '$MAIL_AUTH';/" $DALORADIUS_CONF_PATH
     sed -i "s/\$configValues\['CONFIG_LOG_FILE'\] = .*;/\$configValues\['CONFIG_LOG_FILE'\] = '\/tmp\/daloradius.log';/" $DALORADIUS_CONF_PATH
 
-    echo "daloRADIUS initialization completed."
+    echo "[init.sh] daloRADIUS initialization completed."
 }
 
 function init_database {
-    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE $MYSQL_DATABASE;"
-    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "CREATE USER '$MYSQL_USER'@'localhost' IDENTIFIED BY '$MYSQL_PASSWORD';"
-    mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "GRANT ALL PRIVILEGES ON $MYSQL_DATABASE.* TO '$MYSQL_USER'@'localhost'";
+    echo "[init.sh] Database initialization for daloRADIUS started."
+    mysql -u root -h"$MYSQL_HOST" -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS $MYSQL_DATABASE;"
+    mysql -u root -h"$MYSQL_HOST" -p"$MYSQL_ROOT_PASSWORD" -e "CREATE USER IF NOT EXISTS '$MYSQL_USER'@'localhost' IDENTIFIED BY '$MYSQL_PASSWORD';"
+    mysql -u root -h"$MYSQL_HOST" -p"$MYSQL_ROOT_PASSWORD" -e "GRANT ALL PRIVILEGES ON $MYSQL_DATABASE.* TO '$MYSQL_USER'@'localhost'";
+    mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" < $DALORADIUS_PATH/contrib/db/fr3-mariadb-freeradius.sql
     mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" < $DALORADIUS_PATH/contrib/db/mariadb-daloradius.sql
-    echo "Database initialization for daloRADIUS completed."
+    echo "[init.sh] Database initialization for daloRADIUS completed."
 }
 
-echo "Starting daloRADIUS..."
+echo "[init.sh] Starting daloRADIUS..."
 
 INIT_LOCK=/data/.init_done
 if test -f "$INIT_LOCK"; then
     #
     if ! test -f "$DALORADIUS_CONF_PATH" || ! test -s "$DALORADIUS_CONF_PATH"; then
-        echo "Init lock file exists but config file does not exist or is 0 bytes, performing initial setup of daloRADIUS."
+        echo "[init.sh] Init lock file exists but config file does not exist or is 0 bytes, performing initial setup of daloRADIUS."
         init_daloradius
     fi
-    echo "Init lock file exists and config file exists, skipping initial setup of daloRADIUS."
+    echo "[init.sh] Init lock file exists and config file exists, skipping initial setup of daloRADIUS."
 else
     init_daloradius
     date > $INIT_LOCK
 fi
 
 # wait for MySQL-Server to be ready
-echo -n "Waiting for mysql ($MYSQL_HOST)..."
-while ! mysqladmin ping -h"$MYSQL_HOST" -p"$MYSQL_PASSWORD" --silent; do
+echo -n "[init.sh] Waiting for mysql ($MYSQL_HOST)..."
+while ! mysqladmin ping -u"$MYSQL_USER" -h"$MYSQL_HOST" -p"$MYSQL_PASSWORD" --silent; do
     sleep 20
 done
 echo "ok"
 
 DB_LOCK=/data/.db_init_done
 if test -f "$DB_LOCK"; then
-    echo "Database lock file exists, skipping initial setup of mysql database."
+    echo "[init.sh] Database lock file exists, skipping initial setup of mysql database."
 else
     init_database
     date > $DB_LOCK

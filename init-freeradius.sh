@@ -1,9 +1,11 @@
 #!/bin/bash
+# set -e
 # Executable process script for daloRADIUS freeradius docker image:
 # GitHub: git@github.com:lirantal/daloradius.git
 RADIUS_PATH=/etc/freeradius
 
 function init_freeradius {
+	echo "[init-freeradius.sh] freeradius initialization started."
 	# Enable SQL in freeradius
 	sed -i 's|driver = "rlm_sql_null"|driver = "rlm_sql_mysql"|' $RADIUS_PATH/mods-available/sql
 	sed -i 's|dialect = "sqlite"|dialect = "mysql"|' $RADIUS_PATH/mods-available/sql
@@ -18,6 +20,11 @@ function init_freeradius {
 	ln -s $RADIUS_PATH/mods-available/sqlcounter $RADIUS_PATH/mods-enabled/sqlcounter
 	ln -s $RADIUS_PATH/mods-available/sqlippool $RADIUS_PATH/mods-enabled/sqlippool
 	sed -i 's|instantiate {|instantiate {\nsql|' $RADIUS_PATH/radiusd.conf # mods-enabled does not ensure the right order
+    
+    echo "client private-network {" >> $RADIUS_PATH/clients.conf
+	echo "       ipaddr          = $ROUTER_NETWORK" >> $RADIUS_PATH/clients.conf
+	echo "       secret          = $DEFAULT_CLIENT_SECRET" >> $RADIUS_PATH/clients.conf
+	echo "}" >> $RADIUS_PATH/clients.conf
 
 	# Enable used tunnel for unifi
 	sed -i 's|use_tunneled_reply = no|use_tunneled_reply = yes|' $RADIUS_PATH/mods-available/eap
@@ -43,10 +50,11 @@ function init_freeradius {
 	if [ -n "$DEFAULT_CLIENT_SECRET" ]; then
 		sed -i 's|testing123|'$DEFAULT_CLIENT_SECRET'|' $RADIUS_PATH/mods-available/sql
 	fi
-	echo "freeradius initialization completed."
+	echo "[init-freeradius.sh] freeradius initialization completed."
 }
 
 function init_database {
+	echo "[init-freeradius.sh] Database initialization for freeradius started."
 	mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" < $RADIUS_PATH/mods-config/sql/main/mysql/schema.sql
 	mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" < $RADIUS_PATH/mods-config/sql/ippool/mysql/schema.sql
 
@@ -58,17 +66,17 @@ function init_database {
 	if [ -n "$DEFAULT_CLIENT_SECRET" ]; then
 		SECRET=$DEFAULT_CLIENT_SECRET
 	fi
-	echo "Adding client for $CIDR with default secret $SECRET"
+	echo "[init-freeradius.sh] Adding client for $CIDR with default secret $SECRET"
 	mysql -h "$MYSQL_HOST" -u "$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "INSERT INTO nas (nasname,shortname,type,ports,secret,server,community,description) VALUES ('$CIDR','DOCKER NET','other',0,'$SECRET',NULL,'','')"
 
-	echo "Database initialization for freeradius completed."
+	echo "[init-freeradius.sh] Database initialization for freeradius completed."
 }
 
-echo "Starting freeradius..."
+echo "[init-freeradius.sh] Starting freeradius..."
 
 # wait for MySQL-Server to be ready
-while ! mysqladmin ping -h"$MYSQL_HOST" --silent; do
-	echo "Waiting for mysql ($MYSQL_HOST)..."
+while ! mysqladmin ping -u"$MYSQL_USER" -h"$MYSQL_HOST" -p"$MYSQL_PASSWORD" --silent; do
+	echo "[init-freeradius.sh] Waiting for mysql ($MYSQL_HOST)..."
 	sleep 20
 done
 
@@ -77,9 +85,9 @@ if test -f "$INIT_LOCK"; then
 	# Lock file exists, but verify that FreeRADIUS is actually configured
 	# This handles the case where containers are recreated but volumes persist
 	if test -L "$RADIUS_PATH/mods-enabled/sql" && grep -q "rlm_sql_mysql" "$RADIUS_PATH/mods-available/sql" 2>/dev/null; then
-		echo "Init lock file exists and FreeRADIUS is properly configured, skipping initial setup."
+		echo "[init-freeradius.sh] Init lock file exists and FreeRADIUS is properly configured, skipping initial setup."
 	else
-		echo "Init lock file exists but FreeRADIUS configuration is missing, reinitializing..."
+		echo "[init-freeradius.sh] Init lock file exists but FreeRADIUS configuration is missing, reinitializing..."
 		rm -f "$INIT_LOCK"
 		init_freeradius
 		date > $INIT_LOCK
@@ -91,7 +99,7 @@ fi
 
 DB_LOCK=/data/.db_init_done
 if test -f "$DB_LOCK"; then
-	echo "Database lock file exists, skipping initial setup of mysql database."
+	echo "[init-freeradius.sh] Database lock file exists, skipping initial setup of mysql database."
 else
 	init_database
 	date > $DB_LOCK
